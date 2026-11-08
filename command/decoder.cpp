@@ -1051,12 +1051,15 @@ bool cDecoder::DecodeNextFrame(const bool audioDecode) {
             dsyslog("cDecoder::DecodeNextFrame(): packet        (%5d), stream %d: avpkt.flags %d send key packet to decoder after restart decoder", packetNumber, avpkt.stream_index, avpkt.flags);
 #endif
         }
+        if (!fullDecode && IsVideoKeyPacket()) avcodec_flush_buffers(codecCtxArray[avpkt.stream_index]);  // decode key packet standalone
         decoderSendState = SendPacketToDecoder(false);      // send key packet to decoder, no flash flag
+        if (!fullDecode && IsVideoKeyPacket() && (decoderSendState == 0)) avcodec_send_packet(codecCtxArray[avpkt.stream_index], nullptr);  // drain it
         dsyslog("cDecoder::DecodeNextFrame(): packet (%5d), stream %d: is video key packet, start decoding", packetNumber, avpkt.stream_index);
         decoderRestart = false;
     }
     // receive decoded frame from queue
     decoderReceiveState = ReceiveFrameFromDecoder();      // receive only if first send is donw
+    if (!fullDecode && !eof && (decoderReceiveState == AVERROR_EOF)) decoderReceiveState = -EAGAIN;  // key packet drained, send next
     while (decoderReceiveState == -EAGAIN) {              // no packet ready, send next packet
         if (abortNow) return false;
 
@@ -1078,7 +1081,9 @@ bool cDecoder::DecodeNextFrame(const bool audioDecode) {
                     if (!fullDecode      && !IsVideoKeyPacket()) continue; // decode only iFrames, no audio decode without full decode
                     if (!audioDecode     && !IsVideoPacket())    continue; // decode only video frames
                     if (!IsVideoPacket() && !IsAudioPacket())    continue; // ignore all other types (e.g. subtitle
+                    if (!fullDecode && IsVideoKeyPacket()) avcodec_flush_buffers(codecCtxArray[avpkt.stream_index]);  // decode key packet standalone
                     decoderSendState = SendPacketToDecoder(false);      // send packet to decoder, no flash flag
+                    if (!fullDecode && IsVideoKeyPacket() && (decoderSendState == 0)) avcodec_send_packet(codecCtxArray[avpkt.stream_index], nullptr);  // drain it
 #ifdef DEBUG_DECODE_NEXT_FRAME
                     dsyslog("cDecoder::DecodeNextFrame(): packet        (%5d), stream %d, fullDecode %d: avpkt.flags %d send to decoder", packetNumber, avpkt.stream_index, fullDecode, avpkt.flags);
 #endif
@@ -1111,6 +1116,7 @@ bool cDecoder::DecodeNextFrame(const bool audioDecode) {
         }
         // retry receive
         decoderReceiveState = ReceiveFrameFromDecoder();  // retry receive
+        if (!fullDecode && !eof && (decoderReceiveState == AVERROR_EOF)) decoderReceiveState = -EAGAIN;  // key packet drained, send next
     }
 
     // now we have received a frame or an error
