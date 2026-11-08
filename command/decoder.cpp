@@ -529,6 +529,11 @@ bool cDecoder::InitDecoder(const char *filename) {
         }
         else codecInfo.codec= avcodec_find_decoder(codec_id);
         if (!codecInfo.codec) {  // ignore not supported DVB subtitle by libavcodec
+            const AVMediaType codecType = avctx->streams[streamIndex]->codecpar->codec_type;
+            if ((codecType == AVMEDIA_TYPE_DATA) || (codecType == AVMEDIA_TYPE_UNKNOWN)) {  // e.g. EPG, SCTE-35, DSM-CC in non VDR recordings
+                dsyslog("cDecoder::InitDecoder(): ignore stream %i without decoder, codec id %d", streamIndex, codec_id);
+                continue;
+            }
             switch (codec_id) {
 #if LIBAVCODEC_VERSION_INT < ((59<<16)+(18<<8)+100)
             case 100359:
