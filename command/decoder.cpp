@@ -1085,6 +1085,12 @@ bool cDecoder::DecodeNextFrame(const bool audioDecode) {
                 }
                 else {
                     dsyslog("cDecoder::DecodeNextFrame(): packet     (%5d): end of all ts files reached", packetNumber);
+                    // last packet read may be a data stream (e.g. EPG), flush the video decoder
+                    if (!IsVideoPacket() && !IsAudioPacket()) {
+                        for (unsigned int i = 0; i < avctx->nb_streams; i++) {
+                            if (avctx->streams[i]->codecpar->codec_type == AVMEDIA_TYPE_VIDEO) { avpkt.stream_index = i; break; }
+                        }
+                    }
                     decoderSendState = SendPacketToDecoder(true);  // flush flag
                 }
                 break;
@@ -1327,7 +1333,7 @@ void cDecoder::Time(bool start) {
 
 
 void cDecoder::FlushDecoder(const int streamIndex) {
-    avcodec_send_packet(codecCtxArray[avpkt.stream_index], nullptr);
+    avcodec_send_packet(codecCtxArray[streamIndex], nullptr);
 }
 
 
